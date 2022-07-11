@@ -1,0 +1,272 @@
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" class="no-js">
+
+<head>
+    <meta charset="utf-8">
+    <title>Proton Test Card Page</title>
+    <meta name="description" content="Payments landing page" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="HandheldFriendly" content="true" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/css/bootstrap.min.css" />
+    <script type="text/javascript">
+        let current = {
+            publicKey: 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEOXFzcNqZyCD3f3DZxif6zwiLELHwZ6WzkLvcxssqGZRspLPljrQ+kPYNUyZ6ViMZibr/r3n5Y9vVCCml3lFFyg==',
+        };
+
+        document.addEventListener("DOMContentLoaded", () => {
+            console.log('child page loaded');
+            document.querySelector('#pay-button').addEventListener('click', () => sendDetailsToParent());
+        });
+
+        async function checkUser() {
+            const userData = await sendRequest('/api/users');
+
+            console.log('userData', userData);
+        }
+
+        async function sendDetailsToParent() {
+            const expiration = document.querySelector('#expiration').value;
+            const [expMonth, expYear] = expiration.split('/');
+            let cardDetails = {
+                Number: document.querySelector('#card').value,
+                ExpMonth: expMonth,
+                ExpYear: `20${expYear}`,
+                CVC: document.querySelector('#cvc').value,
+                Name: document.querySelector('#name').value,
+                Country: document.querySelector('#country').value,
+                ZIP: document.querySelector('#zip').value
+            };
+
+            // Please note, an HTTPS page is necessary for this work
+            cardDetails = await encryptCardDetails(cardDetails);
+
+            parent.postMessage(JSON.stringify({ type: 'encrypted-card', data: cardDetails }), '*');
+        }
+
+        async function encryptCardDetails(cardDetails) {
+            let iv;
+            let ciphertext;
+            let serverKey = await importServerKeyPem();
+
+            let clientKeyPair = await window.crypto.subtle.generateKey(
+                {
+                    name: "ECDH",
+                    namedCurve: "P-256"
+                },
+                false,
+                ["deriveKey"]
+            );
+
+            let exported = await window.crypto.subtle.exportKey("spki", clientKeyPair.publicKey);
+            let bufferc = new Uint8Array(exported);
+
+            const clientPublicKey = window.btoa(String.fromCharCode.apply(null, bufferc));
+            let clientSecretKey = await deriveSecretKey(clientKeyPair.privateKey, serverKey);
+            const decrypted = await encrypt(clientSecretKey, cardDetails);
+
+            const reqDetails = {
+                CypherText: decrypted.combined,
+                Ephemeral: clientPublicKey,
+            };
+
+            console.log(JSON.stringify(reqDetails));
+
+            return reqDetails;
+
+            /*
+            Encrypt the message using the secret key.
+            Update the "ciphertextValue" box with a representation of part of
+            the ciphertext.
+             */
+
+            /*
+            Derive an AES key, given:
+            - our ECDH private key
+            - their ECDH public key
+             */
+            function deriveSecretKey(privateKey, publicKey) {
+                return window.crypto.subtle.deriveKey({
+                    name: "ECDH",
+                    public: publicKey
+                },
+                    privateKey, {
+                    name: "AES-GCM",
+                    length: 256
+                },
+                    false,
+                    ["encrypt", "decrypt"]);
+            }
+
+            function str2ab(str) {
+                const buf = new ArrayBuffer(str.length);
+                const bufView = new Uint8Array(buf);
+                for (let i = 0, strLen = str.length; i < strLen; i++) {
+                    bufView[i] = str.charCodeAt(i);
+                }
+                return buf;
+            }
+
+            function importServerKeyPem() {
+                const binaryDerString = window.atob(current.publicKey);
+                // convert from a binary string to an ArrayBuffer
+                const binaryDer = str2ab(binaryDerString);
+
+                return window.crypto.subtle.importKey(
+                    "spki", //can be "jwk" (public or private), "raw" (public only), "spki" (public only), or "pkcs8" (private only)
+                    binaryDer, { //these are the algorithm options
+                    name: "ECDH",
+                    namedCurve: "P-256", //can be "P-256", "P-384", or "P-521"
+                },
+                    false, //whether the key is extractable (i.e. can be used in exportKey)
+                    []//"deriveKey" and/or "deriveBits" for private keys only (just put an empty list if importing a public key)
+                )
+            }
+
+            async function encrypt(secretKey, data) {
+                iv = window.crypto.getRandomValues(new Uint8Array(12));
+                let enc = new TextEncoder();
+                let encoded = enc.encode(JSON.stringify(data));
+
+                ciphertext = await window.crypto.subtle.encrypt(
+                    {
+                        name: "AES-GCM",
+                        iv: iv
+                    },
+                    secretKey,
+                    encoded
+                );
+
+                let bufferc = new Uint8Array(ciphertext);
+                const cyphertextStr = window.btoa(String.fromCharCode.apply(null, bufferc));
+                const ivStr = window.btoa(String.fromCharCode.apply(null, iv));
+
+                return {
+                    cyphertext: cyphertextStr,
+                    iv: ivStr,
+                    combined: ivStr + cyphertextStr,
+                };
+            }
+        }
+    </script>
+</head>
+
+<body>
+    <div class="content">
+        <div class="content-inner">
+            <form id="card_form" class="form-horizontal">
+                <fieldset>
+                    <!-- Form Name -->
+                    <legend>Card Form</legend>
+                    <!-- Text input-->
+                    <div class="form-group row">
+                        <label class="col-md-4 control-label" for="name">Name</label>
+                        <div class="col-md-4">
+                            <input id="name" name="name" type="text" placeholder="Proton User"
+                                class="form-control input-md" value="Proton User" required="">
+                        </div>
+                    </div>
+                    <!-- Text input-->
+                    <div class="form-group row">
+                        <label class="col-md-4 control-label" for="card">Card Number</label>
+                        <div class="col-md-4">
+                            <input id="card" name="card" type="text" placeholder="0000 0000 0000 0000"
+                                value="4111111111111111" class="form-control input-md" required="">
+                        </div>
+                    </div>
+                    <!-- Text input-->
+                    <div class="form-group row">
+                        <label class="col-md-4 control-label" for="expiration">Expiration Date</label>
+                        <div class="col-md-4">
+                            <input id="expiration" name="expiration" type="text" placeholder="12/22" value="12/22"
+                                class="form-control input-md">
+                        </div>
+                    </div>
+                    <!-- Text input-->
+                    <div class="form-group row">
+                        <label class="col-md-4 control-label" for="cvc">CVC</label>
+                        <div class="col-md-4">
+                            <input id="cvc" name="cvc" type="text" placeholder="000" value="123"
+                                class="form-control input-md" required="">
+                        </div>
+                    </div>
+                    <!-- Select Basic -->
+                    <div class="form-group row">
+                        <label class="col-md-4 control-label" for="country">Country</label>
+                        <div class="col-md-4">
+                            <select id="country" name="country" class="form-control">
+                                <option value="CH">Switzerland</option>
+                                <option value="US">United States</option>
+                                <option value="CZ">Czech Republic</option>
+                                <option value="MK">Macedonia</option>
+                            </select>
+                        </div>
+                    </div>
+                    <!-- Text input-->
+                    <div class="form-group row">
+                        <label class="col-md-4 control-label" for="zip">Zip Code</label>
+                        <div class="col-md-4">
+                            <input id="zip" name="zip" type="text" placeholder="92129" value="92129"
+                                class="form-control input-md">
+                        </div>
+                    </div>
+
+                </fieldset>
+                <fieldset>
+                    <!-- Button (Double) -->
+                    <div class="form-group row">
+                        <div class="col-md-4 control-label"></div>
+                        <div class="col-md-4" style="">
+                            <button type="button" id="pay-button" name="pay-button" class="btn btn-info">Submit</button>
+                        </div>
+                    </div>
+                </fieldset>
+            </form>
+        </div>
+    </div>
+    <style nonce="{nonce}">
+        html {
+            font-size: 14px;
+        }
+
+        .content {
+            min-height: 100vh;
+            /* background-image: -webkit-linear-gradient(top, var(--main-bg-color, #262a33), var(--secondary-bg-color, #3C414E));
+        background-image: linear-gradient(to bottom, var(--main-bg-color, #262a33), var(--secondary-bg-color, #3C414E)); */
+            display: flex;
+            flex-direction: column;
+            padding: 1em;
+        }
+
+        .content-inner {
+            margin: auto;
+            /*text-align: center;*/
+        }
+
+
+        #card_form {
+            width: 600px;
+        }
+
+        #loading_section {
+            display: none;
+        }
+
+        #token-response-container,
+        #check-response-container,
+        #credit-response-container {
+            display: none;
+        }
+
+        #apply-credit-section {
+            display: none;
+        }
+
+        legend {
+            border: #efefef solid;
+            border-width: 0 0 1px;
+        }
+    </style>
+    ​
+</body>
+
+</html>

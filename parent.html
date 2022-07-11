@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payments Page Parent</title>
+    <script type="text/javascript">
+        document.addEventListener("DOMContentLoaded", () => {
+            console.log('Parent page loaded');
+            setupIFrame();
+        });
+
+        async function setupIFrame() {
+            const response = await fetch('/card-iframe.html');
+            const html = await response.text();
+            const encodedHTML = unescape(encodeURIComponent(html));
+            const dynamicIframe = document.createElement('iframe');
+            const baseEncodedHTML = window.btoa(encodedHTML);
+            dynamicIframe.src = `data:text/html;base64,${baseEncodedHTML}`;
+            document.body.appendChild(dynamicIframe);
+        }
+
+        window.addEventListener("message", (event) => {
+            console.log('event.data', event.data);
+        });
+    </script>
+</head>
+
+<body>
+    <h1>Payments Page</h1>
+</body>
+<style>
+    iframe {
+        height: 800px;
+        width: 600px;
+        display: block;
+    }
+</style>
+
+</html>
