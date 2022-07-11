@@ -16,7 +16,11 @@ npx http-server -p {Port_Number}
 This page represents the payments page in the client app (web, iOS, Android).
 
 ### Iframe (card-iframe.html)
-This file represents the iframe HTML that will be built into the client app, converted to base64, and displayed within the parent page
+This file represents the iframe HTML that will be 
+1. Contained within the microservice repository
+2. Copied and cloned into client apps at build time
+3. Converted to base64
+4. Displayed within the parent page
 
 ```
 dynamicIframe.src = `data:text/html;base64,${baseEncodedHTML}`;
